@@ -5,7 +5,7 @@ use utf8;
 use Data::Dumper;
 use Search::Xapian qw(:ops);
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 sub new {
     my $class = shift;

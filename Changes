@@ -1,3 +1,8 @@
 0.01  Wed, 06 Jun 2007 13:42:36 +0800
 
 	- initial release
+
+0.02  Wed, 06 Jun 2007 14:14:10 +0800
+
+	- Output message of pomagic is polished.
+	- --version is added to pomagic's options.

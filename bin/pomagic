@@ -2,7 +2,7 @@
 
 use strict;
 use utf8;
-use Getopt::Long;
+use Getopt::Long qw(:config auto_version);
 use Data::Dumper;
 use Locale::PO;
 use Locale::Memories;
@@ -27,7 +27,7 @@ sub load_po_data {
 
     my %msg;
     for my $file (@files) {
-	print $file, $/;
+	print "Loading data from $file\n";
 	$file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
 	die "$file is not a recognized name" if !$1;
 	my $locale = lc $1;
@@ -96,6 +96,7 @@ sub translate_po_data {
     }
 
     for my $file (@input_files) {
+	print "Translating $file\n";
 	print $file, $/;
 	$file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
 	die "$file is not a recognized name" if !$1;
@@ -157,8 +158,8 @@ pomagic - L10N Message Translator
 This tool builds up translation memory index and translates messages into
 localized versions.
 
-                      pomagic.pl + Translation memories
-   The untranslated -------------------------------------> The translated
+                        pomagic + Translation memories
+   The untranslated --------------------------------------> The translated
 
 PO file names must have locale code patterns, such as 'my_app_zh_tw.po'.
 

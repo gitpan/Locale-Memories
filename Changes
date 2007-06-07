@@ -6,3 +6,11 @@
 
 	- Output message of pomagic is polished.
 	- --version is added to pomagic's options.
+
+0.03  Thu, 07 Jun 2007 14:00:26 +0800
+	- $locale_pattern in Locale/Memories.pm is corrected.
+	- Encoding of .po files are converted to UTF-8 when pomagic is translating
+	  messages.
+	- The behavior of option -m of pomagic is changed. pomagic now searches for
+	  .po files recursively. (File::Find::Rule dependency is required.)
+	- pofetcher is added.

@@ -6,48 +6,58 @@ use Getopt::Long qw(:config auto_version);
 use Data::Dumper;
 use Locale::PO;
 use Locale::Memories;
+use File::Find::Rule;
+use File::Path;
+use Encode;
 
 our $VERSION = $Locale::Memories::VERSION;
 
-my $locale_pattern = qr{[a-z][a-z](?:_[a-z][a-z][a-z]?)?};
+my $locale_pattern = qr{[a-z][a-z][a-z]?(?:_[a-z][a-z])?};
+
+sub get_po_encoding {
+    my $file = shift;
+    my $encoding;
+    open my $fh, '<', $file or die $!;
+    while (my $line = <$fh>) {
+	if ($line =~ m{"Content-Type: text/plain; charset=([\w\d\-_]+)\b}) {
+	    $encoding = $1;
+	}
+    }
+    $encoding = 'utf8' if !$encoding;
+    close $fh;
+    return $encoding;
+}
 
 sub load_po_data {
-    my $path = shift;
-    my @files;
-    if (-d $path) {
-	@files = (grep { m{\A.+[^a-z]${locale_pattern}\.po\z}i }
-		  glob($path . '/*.po'));
-    }
-    elsif (-f $path) {
-	@files = ($path);
-    }
-    else {
-	die "Cannot recognize file type";
-    }
-
+    my $file = shift;
+    die "Cannot recognize file type" if !-f $file;
     my %msg;
-    for my $file (@files) {
-	print "Loading data from $file\n";
-	$file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
-	die "$file is not a recognized name" if !$1;
-	my $locale = lc $1;
-	my $aref = Locale::PO->load_file_asarray($file);
-	if (@{$aref}) {
-	    @{$aref} = grep { $_->{msgid} ne q[""] } @{$aref};
-	    unshift @{$aref},
-		Locale::PO->new(-msgid => '',
-				-msgstr =>
-				join q//, map { "$_\\n" }
-				"Project-Id-Version: blah",
-				"Report-Msgid-Bugs-To: http://blahblah",
-				"POT-Creation-Date: xxxx-xx-xx xx:xx+xxxx",
-				"PO-Revision-Date: xxxx-xx-xx xx:xx+xxxx",
-				"Last-Translator: Your name <blah\@blah.com>",
-				"Language-Team: ",
-				"MIME-Version: 1.0",
-				"Content-Type: text/plain; charset=UTF-8",
-				"Content-Transfer-Encoding: 8bit");
-	    for my $m (@{$aref}) {
+
+    print "Loading data from $file\n";
+    $file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
+    die "$file is not a recognized name" if !$1;
+    my $locale = lc $1;
+    my $encoding = get_po_encoding($file);
+    my $aref = Locale::PO->load_file_asarray($file);
+    if (@{$aref}) {
+	@{$aref} = grep { $_->{msgid} ne q[""] } @{$aref};
+	unshift @{$aref},
+	    Locale::PO->new(-msgid => '',
+			    -msgstr =>
+			    join q//, map { "$_\\n" }
+			    "Project-Id-Version: blah",
+			    "Report-Msgid-Bugs-To: http://blahblah",
+			    "POT-Creation-Date: xxxx-xx-xx xx:xx+xxxx",
+			    "PO-Revision-Date: xxxx-xx-xx xx:xx+xxxx",
+			    "Last-Translator: Your name <blah\@blah.com>",
+			    "Language-Team: ",
+			    "MIME-Version: 1.0",
+			    "Content-Type: text/plain; charset=UTF-8",
+			    "Content-Transfer-Encoding: 8bit");
+	for my $m (@{$aref}) {
+	    Encode::from_to($m->{msgid}, $encoding, 'utf8', 1);
+	    Encode::from_to($m->{msgstr}, $encoding, 'utf8', 1);
+	    if ($m->{msgid} && $m->{msgstr}) {
 		push @{$msg{$locale}}, $m;
 	    }
 	}
@@ -57,17 +67,13 @@ sub load_po_data {
 
 sub build_memories {
     my ($lm, @memory_dirs) = @_;
-    for my $k (@memory_dirs) {
-	if (!-d $k) {
-	    warn "$k is not a directory";
-	    next;
-	}
+    local $Data::Dumper::Terse = 1;
+    local $Data::Dumper::Indent = 0;
+    for my $k (File::Find::Rule->file->name('*.po')->in(@memory_dirs)) {
 	my %msg = load_po_data($k);
-	local $Data::Dumper::Terse = 1;
-	local $Data::Dumper::Indent = 0;
 	for my $locale (keys %msg) {
 	    for my $m (@{$msg{$locale}}) {
-# 		print join q/ /, $locale, Dumper $m, $/;
+# 		print join q/ /, $locale, $m->{msgid}, $m->{msgstr}, $/;
  		$lm->index_msg($locale, $m->{msgid}, $m->{msgstr});
 	    }
 	}
@@ -76,17 +82,6 @@ sub build_memories {
 
 sub translate_po_data {
     my ($lm, $input_path, $output_dir) = @_;
-    my @input_files;
-    if (-d $input_path) {
-	@input_files = (grep { m{\A.+[^a-z]${locale_pattern}\.po\z}i }
-			glob($input_path . '/*.po'));
-    }
-    elsif (-f $input_path) {
-	@input_files = ($input_path);
-    }
-    else {
-	die "Cannot recognize file type";
-    }
 
     if (-e $output_dir && !-d $output_dir) {
 	die "$output_dir already exists and it is not a directory";
@@ -95,11 +90,12 @@ sub translate_po_data {
 	mkdir $output_dir or die $!;
     }
 
-    for my $file (@input_files) {
+    for my $file (File::Find::Rule->file->name('*.po')->in($input_path)) {
 	print "Translating $file\n";
-	print $file, $/;
 	$file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
-	die "$file is not a recognized name" if !$1;
+	if (!$1) {
+	    warn "$file is not a recognized name";
+	}
 	my $locale = lc $1;
 	my $aref = Locale::PO->load_file_asarray($file);
 	if (@{$aref}) {
@@ -111,7 +107,11 @@ sub translate_po_data {
 			.= "Translated from ($file): '$msg_ref->[0]'";
 		}
 	    }
-	    my $output_file = $output_dir . '/' . $locale . '.po';
+	    $file =~ m{$input_path/(.+)/.+?\.po\z};
+	    my $output_subpath = $1;
+	    mkpath([$output_dir . '/' . $output_subpath], 0, 0755);
+	    my $output_file = $output_dir . '/' . $output_subpath
+		. '/' .$locale . '.po';
 	    Locale::PO->save_file_fromarray($output_file, $aref);
 	}
     }
@@ -148,10 +148,9 @@ pomagic - L10N Message Translator
 
 =head1 SYNOPSIS
 
-  % pomagic.pl -m directory of .po files [can be multiple values]
-               -i an input .po file
-                  or a directory which contains .po files
-               -o the output directory
+  % pomagic -m translation memories
+            -i input data
+            -o output data
 
 =head1 DESCRIPTION
 
@@ -162,6 +161,21 @@ localized versions.
    The untranslated --------------------------------------> The translated
 
 PO file names must have locale code patterns, such as 'my_app_zh_tw.po'.
+
+=head2 OPTIONS
+
+=head3 m
+
+pomagic searches for all .po files under specified paths. This option
+can be used multiple times.
+
+=head3 i
+
+Input data. Can be either a .po file or a directory having .po files.
+
+=head3 o
+
+Output directory
 
 =head1 COPYRIGHT
 

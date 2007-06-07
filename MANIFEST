@@ -1,4 +1,5 @@
 bin/pomagic
+bin/pofetcher
 Changes
 inc/Module/AutoInstall.pm
 inc/Module/Install.pm

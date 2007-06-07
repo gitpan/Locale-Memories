@@ -5,14 +5,13 @@ use utf8;
 use Data::Dumper;
 use Search::Xapian qw(:ops);
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub new {
     my $class = shift;
     bless {
 	   indexes => {},
 	   locales => {},
-	   path => 'lm_indexes',
 	   stemmer => Search::Xapian::Stem->new('english'),
 	  }, $class;
 }
@@ -51,10 +50,13 @@ sub index_msg {
 
 sub translate_msg {
     my ($self, $locale, $msg_id) = @_;
+    return if !$self->{indexes}{$locale};
+    return if !$msg_id;
+    my @tokens = $self->_tokenize($msg_id);
+    return if !@tokens;
     my @translated_msgs;
     for my $op (OP_PHRASE, OP_NEAR, OP_AND, OP_OR) {
-	my $query = Search::Xapian::Query->new($op,
-					       $self->_tokenize($msg_id));
+	my $query = Search::Xapian::Query->new($op, @tokens);
 	my $enq = $self->{indexes}{$locale}->enquire($query);
 	my $matches = $enq->get_mset(0, 20);
 	next if !$matches->size();

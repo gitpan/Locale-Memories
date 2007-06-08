@@ -8,11 +8,12 @@ use Locale::PO;
 use Locale::Memories;
 use File::Find::Rule;
 use File::Path;
+use List::Util qw(shuffle);
 use Encode;
 
 our $VERSION = $Locale::Memories::VERSION;
 
-my $locale_pattern = qr{[a-z][a-z][a-z]?(?:_[a-z][a-z])?};
+my $locale_pattern = qr{[a-z][a-z][a-z]?(?:_[a-z][a-z])?}i;
 
 sub get_po_encoding {
     my $file = shift;
@@ -30,16 +31,22 @@ sub get_po_encoding {
 
 sub load_po_data {
     my $file = shift;
-    die "Cannot recognize file type" if !-f $file;
+    die "$file is not a regular file" if !-f $file;
     my %msg;
 
     print "Loading data from $file\n";
-    $file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
-    die "$file is not a recognized name" if !$1;
+    $file =~ m{\A.+[^a-zA-Z_](${locale_pattern})\.po\z};
+    if (!$1) {
+	warn "$file is not a recognized name";
+	next;
+    }
     my $locale = lc $1;
     my $encoding = get_po_encoding($file);
-    my $aref = Locale::PO->load_file_asarray($file);
-    if (@{$aref}) {
+    my $aref;
+    eval {
+	$aref = Locale::PO->load_file_asarray($file);
+    };
+    if (!$@ && @{$aref}) {
 	@{$aref} = grep { $_->{msgid} ne q[""] } @{$aref};
 	unshift @{$aref},
 	    Locale::PO->new(-msgid => '',
@@ -55,10 +62,14 @@ sub load_po_data {
 			    "Content-Type: text/plain; charset=UTF-8",
 			    "Content-Transfer-Encoding: 8bit");
 	for my $m (@{$aref}) {
-	    Encode::from_to($m->{msgid}, $encoding, 'utf8', 1);
-	    Encode::from_to($m->{msgstr}, $encoding, 'utf8', 1);
-	    if ($m->{msgid} && $m->{msgstr}) {
-		push @{$msg{$locale}}, $m;
+	    if ($m->{msgid}) {
+		eval {
+		    Encode::from_to($m->{msgid}, $encoding, 'utf8');
+		    Encode::from_to($m->{msgstr}, $encoding, 'utf8');
+		};
+		if (!$@) {
+		    push @{$msg{$locale}}, $m;
+		}
 	    }
 	}
     }
@@ -69,7 +80,8 @@ sub build_memories {
     my ($lm, @memory_dirs) = @_;
     local $Data::Dumper::Terse = 1;
     local $Data::Dumper::Indent = 0;
-    for my $k (File::Find::Rule->file->name('*.po')->in(@memory_dirs)) {
+    for my $k (shuffle(File::Find::Rule->file
+		       ->name('*.po')->in(@memory_dirs))) {
 	my %msg = load_po_data($k);
 	for my $locale (keys %msg) {
 	    for my $m (@{$msg{$locale}}) {
@@ -90,21 +102,33 @@ sub translate_po_data {
 	mkdir $output_dir or die $!;
     }
 
-    for my $file (File::Find::Rule->file->name('*.po')->in($input_path)) {
+    my @input_files = File::Find::Rule->file->name('*.po')->in($input_path);
+    for my $file (@input_files) {
 	print "Translating $file\n";
-	$file =~ m{\A.+[^a-z](${locale_pattern})\.po\z};
+	$file =~ m{\A.+[^a-zA-Z_](${locale_pattern})\.po\z};
 	if (!$1) {
 	    warn "$file is not a recognized name";
+	    next;
 	}
 	my $locale = lc $1;
-	my $aref = Locale::PO->load_file_asarray($file);
-	if (@{$aref}) {
+	my $encoding = get_po_encoding($file);
+	my $aref;
+	eval {
+	    $aref = Locale::PO->load_file_asarray($file);
+	};
+	if (!$@ && @{$aref}) {
 	    for my $m (@{$aref}) {
-		my $msg_ref = $lm->translate_msg($locale, $m->{msgid});
-		if ($msg_ref) {
-		    $m->{msgstr} = $msg_ref->[1];
-		    $m->{comment}
-			.= "Translated from ($file): '$msg_ref->[0]'";
+		eval {
+		    Encode::from_to($m->{msgid}, $encoding, 'utf8');
+		    Encode::from_to($m->{msgstr}, $encoding, 'utf8');
+		};
+		if (!$@) {
+		    my $msg_ref = $lm->translate_msg($locale, $m->{msgid});
+		    if (ref $msg_ref && $msg_ref->[1]) {
+			$m->{msgstr} = $msg_ref->[1];
+			$m->{comment}
+			    .= "Translated from ($file): '$msg_ref->[0]'";
+		    }
 		}
 	    }
 	    $file =~ m{$input_path/(.+)/.+?\.po\z};
@@ -119,19 +143,27 @@ sub translate_po_data {
 
 sub main {
     my @memory_dirs;
-    my ($input_path, $output_dir);
+    my ($input_path, $output_dir, $index_path);
 
     exec 'perldoc', $0 if !@ARGV;
 
     GetOptions(q{memory|m=s@} => \@memory_dirs,
 	       q{input|i=s} => \$input_path,
-	       q{output_dir|o=s} => \$output_dir);
-    die "Please specify translation memories" if !@memory_dirs;
+	       q{output_dir|o=s} => \$output_dir,
+	       q{index_path|p=s} => \$index_path);
     die "Please specify input path" if !$input_path;
     die "Please specify output dir" if !$output_dir;
 
-    my $lm = Locale::Memories->new();
-    build_memories($lm, @memory_dirs);
+    my $lm = Locale::Memories->new({index_path => $index_path});
+    if (@memory_dirs) {
+	build_memories($lm, @memory_dirs);
+    }
+    elsif ($index_path) {
+ 	$lm->load_index($index_path);
+    }
+    else {
+	die "Please specify translation memories" if !@memory_dirs;
+    }
     translate_po_data($lm, $input_path, $output_dir);
 }
 
@@ -149,6 +181,7 @@ pomagic - L10N Message Translator
 =head1 SYNOPSIS
 
   % pomagic -m translation memories
+            -p index path
             -i input data
             -o output data
 
@@ -168,6 +201,10 @@ PO file names must have locale code patterns, such as 'my_app_zh_tw.po'.
 
 pomagic searches for all .po files under specified paths. This option
 can be used multiple times.
+
+=head3 p
+
+index path
 
 =head3 i
 

@@ -43,8 +43,8 @@ my @default_locales = qw(aa_dj aa_er aa_er aa_et af_za am_et an_es
 			 ve_za vi_vn wa_be wo_sn xh_za yi_us zh_cn
 			 zh_hk zh_sg zh_tw zu_za);
 
-@default_locales = shuffle (@default_locales,
-			    map {m{(\w+)_\w+}; $1} @default_locales);
+@default_locales = shuffle(@default_locales,
+			   map {m{(\w+)_\w+}; $1} @default_locales);
 sub get_search_result {
     my $locale = shift;
     my $max_results = shift;
@@ -105,7 +105,9 @@ sub fetch_source_files {
 		   . "&& rm -rf $subroot_path '$output_dir/$file'");
 	    for my $old_path (glob("$output_dir/$subroot_path/*.po")) {
 		$old_path =~ m{\A(.+)/(.+\.po)\z};
-		my $new_path = $1 . '/' . lc $2;
+		my $po_file = $2;
+		$po_file =~ s{-}{_}g;
+		my $new_path = $1 . '/' . lc $po_file;
 		system("mv $old_path $new_path");
 	    }
 	}
@@ -147,8 +149,9 @@ pofetcher - L10N Message Fetching Tool
 
 =head1 DESCRIPTION
 
-This tool fetches software information from http://code.google.com,
-and then get source code and extracts .po to your file system.
+This tool fetches software information from
+http://www.google.com/codesearch, and then get source code and
+extracts .po to your file system.
 
                       pofetcher
    .po files on WWW -------------> .po files on disk

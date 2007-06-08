@@ -18,4 +18,5 @@ requires:
   File::Find::Rule: 0
   Locale::PO: 0
   Search::Xapian: 0
-version: 0.03
+  String::Similarity: 0
+version: 0.04

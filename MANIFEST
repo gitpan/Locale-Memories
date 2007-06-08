@@ -1,5 +1,6 @@
-bin/pomagic
+bin/msgtranslator
 bin/pofetcher
+bin/pomagic
 Changes
 inc/Module/AutoInstall.pm
 inc/Module/Install.pm

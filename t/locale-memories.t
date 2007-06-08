@@ -1,5 +1,5 @@
 use strict;
-use Test::More tests => 3;
+use Test::More tests => 4;
 use Locale::Memories;
 
 my $lm = Locale::Memories->new();
@@ -12,7 +12,7 @@ for my $m (@m) {
     $lm->index_msg($locale, $msg_id, $msg_str);
 }
 
-for my $m ('edit', 'edit this message', 'import from this file') {
+for my $m ('edit', 'copy', 'ok', 'copy clipboard') {
     my $translated_msg = $lm->translate_msg($locale, $m);
     ok($translated_msg);
 }
